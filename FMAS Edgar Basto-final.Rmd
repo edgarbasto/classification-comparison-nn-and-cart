@@ -1,0 +1,589 @@
+---
+title: "TRABALHO DE GRUPO: Fundamentos em Métodos de Aprendizagem Supervisionada"
+author: "Edgar Basto n.93575"
+date: "23 de abril, 2020"
+output: 
+  word_document: 
+    fig_height: 5
+    fig_width: 8
+---
+
+```{r }
+library(rmarkdown)
+library(tree)
+library(neuralnet)
+library(ISLR)
+library(ggplot2)
+library(lsr)
+library(caret)
+# eventually additional libraries can be used
+#options
+options(scipen = 999)
+set.seed(111)
+```
+# 1) Auto data set 
+
+
+```{r}
+# describe the Auto data set 
+data(Auto)
+names(Auto)
+dim(Auto)
+Auto$origin_numeric <- Auto$origin
+Auto$origin <- factor(Auto$origin , levels = c(1,2,3), labels = c("America", "Europe", "Japan"))
+knitr::kable(summary(Auto))
+
+#Correlação entre preditores (var. quantitativa vs var. quantitativa -> r pearson)
+corr.Auto <- round(cor(Auto[,1:7]),2)
+knitr::kable(corr.Auto)
+
+#Correlação entre variável alvo e preditores ( var nominal origin vs var. quantitativas -> ETA)
+anova_1 <- aov(origin_numeric ~ mpg, Auto)
+anova_2 <- aov(origin_numeric ~ cylinders, Auto)
+anova_3 <- aov(origin_numeric ~ displacement, Auto)
+anova_4 <- aov(origin_numeric ~ horsepower, Auto)
+anova_5 <- aov(origin_numeric ~ weight, Auto)
+anova_6 <- aov(origin_numeric ~ acceleration, Auto)
+anova_7 <- aov(origin_numeric ~ year, Auto)
+
+anova_1; anova_2; anova_3; anova_4; anova_5; anova_6; anova_7;
+
+eta_1 <- etaSquared(anova_1)[,1]
+eta_2 <- etaSquared(anova_2)[,1]
+eta_3 <- etaSquared(anova_3)[,1]
+eta_4 <- etaSquared(anova_4)[,1]
+eta_5 <- etaSquared(anova_5)[,1]
+eta_6 <- etaSquared(anova_6)[,1]
+eta_7 <- etaSquared(anova_7)[,1]
+
+eta_1; eta_2; eta_3; eta_4; eta_5; eta_6; eta_7; 
+
+etaList <- c(eta_1, eta_2, eta_3, eta_4, eta_5, eta_6, eta_7)
+origin.eta <- data.frame(variavel = colnames(Auto)[1:7],origin = etaList)
+knitr::kable(origin.eta)
+
+#Pode-se verificar que a variável displacement e weight são as que se correlacionam melhor com a variável alvo
+#Gráfico relacionando os melhores preditores e a variável auto
+
+{plot(Auto$displacement, Auto$weight, pch=21, bg=c("red","green3","blue")[unclass(Auto$origin)], main="Auto Data: Displacement vs Weight")
+}
+
+
+```
+
+
+# 2) Neuralnets for Auto classification
+
+
+```{r}
+
+# use neuralnets for learning the Auto target; 
+#Standardização ####
+Auto_s <- Auto
+for (i in 1:7) {
+  Auto_s[,i] <- (Auto[,i] - mean(Auto[,i])) / sd(Auto[,i])
+}
+Auto_s <- Auto_s[,-9:-10]
+colnames(Auto_s)
+
+#verificação da standardização
+round(colMeans(Auto_s[,c(1:7)]),2)
+apply(Auto_s[,c(1:7)],2, sd)
+
+
+#NN model with 2 hidden node MAIN - ACCURACY  80.6% ####
+nn.Auto_s_2 <- neuralnet(origin ~ ., Auto_s,
+                       learningrate = 0.1,
+                       linear.output = FALSE,
+                       hidden = c(2),
+                       rep = 1,
+                       err.fct = "ce",
+                       lifesign = "minimal"
+                       )
+
+{plot(nn.Auto_s_2)
+}
+#Predict
+prob.Auto_s_2 <- predict(nn.Auto_s_2, Auto_s[,1:8])
+head(prob.Auto_s_2)
+head(apply(prob.Auto_s_2, 1, sum))
+
+confusion_mat_nn_2<-table(Auto_s$origin, apply(prob.Auto_s_2, 1, which.max))
+colnames(confusion_mat_nn_2)<-c("America","Europe","Japan")
+confusion_mat_nn_2
+
+#Avaliação da performance
+#Accuracy
+(accuracy_nn_2<-sum(diag(confusion_mat_nn_2))/sum(confusion_mat_nn_2))
+#Indice de Huberty
+diag(confusion_mat_nn_2)
+default_p <- max(mean(Auto_s$origin == "America"), mean(Auto_s$origin == "Europe"), mean(Auto_s$origin == "Japan"))
+huberty_nn_2 <- (accuracy_nn_2 - default_p) / (1 - default_p)
+huberty_nn_2 
+#Em suma, o modelo proposto com dois nós escondidos, face à possível melhoria de classificação relativa à indicação de classe maioritária (moda) obtemos 48,2% de melhoria.
+
+
+#NN model with 1 hidden node - ACCURACY  73.5% ####
+nn.Auto_s_1 <- neuralnet(origin ~ ., Auto_s,
+                       learningrate = 0.1,
+                       linear.output = FALSE,
+                       hidden = c(1),
+                       rep = 1,
+                       err.fct = "ce",
+                       lifesign = "minimal"
+)
+
+{plot(nn.Auto_s_1)
+}
+#Predict
+prob.Auto_s_1 <- predict(nn.Auto_s_1, Auto_s[,1:8])
+head(prob.Auto_s_1)
+head(apply(prob.Auto_s_1, 1, sum))
+
+confusion_mat_nn_1<-table(Auto_s$origin, apply(prob.Auto_s_1, 1, which.max))
+colnames(confusion_mat_nn_1)<-c("America","Europe","Japan")
+confusion_mat_nn_1
+
+#Avaliação da performance
+#Accuracy
+(accuracy_nn_1<-sum(diag(confusion_mat_nn_1))/sum(confusion_mat_nn_1))
+#Indice de Huberty
+diag(confusion_mat_nn_1)
+default_p <- max(mean(Auto_s$origin == "America"), mean(Auto_s$origin == "Europe"), mean(Auto_s$origin == "Japan"))
+huberty_nn_1 <- (accuracy_nn_1 - default_p) / (1 - default_p)
+huberty_nn_1 
+#Neste modelo só obtemos 29,2% de melhoria de classificação relativa à indicação da classe maioritária e uma accuracy de 29,25%
+
+#NN model with 2,1 hidden nodes - Ajustando o THRESHOLD dá uma ACCURACY de 75.7% ####
+nn.Auto_s_21 <- neuralnet(origin ~ ., Auto_s,
+                         learningrate = 0.1,
+                         linear.output = FALSE,
+                         hidden = c(2,1),
+                         rep = 2,
+                         threshold = 0.5,
+                         err.fct = "ce",
+                         lifesign = "minimal"
+)
+
+{plot(nn.Auto_s_21, rep="best")
+}
+#Predict
+prob.Auto_s_21 <- predict(nn.Auto_s_21, Auto_s[,1:8])
+head(prob.Auto_s_21)
+head(apply(prob.Auto_s_21, 1, sum))
+
+confusion_mat_nn_21<-table(Auto_s$origin, apply(prob.Auto_s_21, 1, which.max))
+colnames(confusion_mat_nn_21)<-c("America","Europe","Japan")
+confusion_mat_nn_21
+
+#Avaliação da performance
+#Accuracy
+(accuracy_nn_21<-sum(diag(confusion_mat_nn_21))/sum(confusion_mat_nn_21))
+#Indice de Huberty
+diag(confusion_mat_nn_21)
+default_p <- max(mean(Auto_s$origin == "America"), mean(Auto_s$origin == "Europe"), mean(Auto_s$origin == "Japan"))
+huberty_nn_21 <- (accuracy_nn_21 - default_p) / (1 - default_p)
+huberty_nn_21 
+#Com este modelo só obtemos 35,3% de melhoria de classificação relativa à indicação da classe maioritária, com uma accuracy de 75,7%
+
+
+#NN model with 3 hidden node - ACCURACY 84,7% ####
+nn.Auto_s_3 <- neuralnet(origin ~ ., data = Auto_s,
+                         learningrate = 0.1,
+                         linear.output = FALSE,
+                         hidden = 3,
+                         rep = 2,
+                         err.fct = "ce",
+                         lifesign = "minimal",
+                         threshold = 0.1, stepmax = 1e5)
+{plot(nn.Auto_s_3, rep="best")
+}
+#Predict
+prob.Auto_s_3 <- predict(nn.Auto_s_3, Auto_s[,1:8])
+head(prob.Auto_s_3)
+head(apply(prob.Auto_s_3, 1, sum))
+
+confusion_mat_nn_3<-table(Auto_s$origin, apply(prob.Auto_s_3, 1, which.max))
+colnames(confusion_mat_nn_3)<-c("America","Europe","Japan")
+confusion_mat_nn_3
+
+#Avaliação da performance
+#Accuracy
+(accuracy_nn_3<-sum(diag(confusion_mat_nn_3))/sum(confusion_mat_nn_3))
+#Huberty
+diag(confusion_mat_nn_3)
+default_p <- max(mean(Auto_s$origin == "America"), mean(Auto_s$origin == "Europe"), mean(Auto_s$origin == "Japan"))
+huberty_nn_3 <- (accuracy_nn_3 - default_p) / (1 - default_p)
+huberty_nn_3 
+#Face à possível melhoria de classificação relativa à indicação de classe maioritária obtemos 59,8% de melhoria.
+
+#Após correr outros modelos com hiper parâmetros diferentes, tais como com hidden nodes = (4), (5) e (2,2) conclui que o que tem menor erro, melhor accuracy e melhor índice de huberty é o Modelo de Rede Neuronal com 3 nós escondidos, com uma accuracy de 84,7% e um índice de Huberty de 59,18%.
+
+#Adicionalmente corri mais dois modelos retirando as variáveis com menor correlação:
+#Teste sem variável YEAR - com 2 hidden nodes, obtive uma accuracy de 78,3%
+#Teste sem variável YEAR e sem variável ACCELERATION - com 2 hidden nodes, obtive uma accuracy de 77,8%
+
+#NN model with 2 hidden node WITHOUT YEAR - ACCURACY 78,3% ####
+Auto_s_noyear <- Auto_s[,-7]
+
+nn.Auto_s_noyear <- neuralnet(origin ~ ., Auto_s_noyear,
+                       learningrate = 0.1,
+                       linear.output = FALSE,
+                       hidden = c(2),
+                       rep = 1,
+                       err.fct = "ce",
+                       lifesign = "minimal",
+                       threshold = 0.1, stepmax = 1e5)
+#plot(nn.Auto_s_noyear)
+
+prob.Auto_s_noyear <- predict(nn.Auto_s_noyear, Auto_s_noyear[,1:7])
+
+confusion_mat_noyear<-table(Auto_s_noyear$origin, apply(prob.Auto_s_noyear, 1, which.max))
+colnames(confusion_mat_noyear)<-c("America","Europe","Japan")
+confusion_mat_noyear
+
+(accuracy_no_year<-sum(diag(confusion_mat_noyear))/sum(confusion_mat_noyear))
+
+#NN model with 2 hidden node WITHOUT YEAR AND ACCELERATION - 77,8% ####
+Auto_s_no_year_acc <- Auto_s[,-6:-7]
+
+
+nn.Auto_s_no_year_acc <- neuralnet(origin ~ ., Auto_s_no_year_acc,
+                              learningrate = 0.1,
+                              linear.output = FALSE,
+                              hidden = c(2),
+                              rep = 1,
+                              err.fct = "ce",
+                              lifesign = "minimal",
+                              threshold = 0.1, stepmax = 1e5)
+#plot(nn.Auto_s_no_year_acc)
+
+prob.Auto_s_no_year_acc <- predict(nn.Auto_s_no_year_acc, Auto_s_no_year_acc[,1:6])
+apply(prob.Auto_s_no_year_acc, 1, sum)
+
+confusion_mat_no_year_acc<-table(Auto_s_no_year_acc$origin, apply(prob.Auto_s_no_year_acc, 1, which.max))
+colnames(confusion_mat_no_year_acc)<-c("America","Europe","Japan")
+confusion_mat_no_year_acc
+
+(accuracy_no_year_acc<-sum(diag(confusion_mat_no_year_acc))/sum(confusion_mat_no_year_acc))
+
+#Mas estes modelos obtiveram uma avaliação pior dos modelos calculados anteriormente
+#Assim sendo o melhor modelo que consegui calcular foi o modelo com 3 nós escondidos nn.Auto_s_3
+
+```
+
+# 3) Trees for Auto classification
+
+```{r}
+# use trees for learning the Auto target; 
+set.seed(111)
+#Cálculo da Deviance inicial ####
+table(Auto$origin)
+D <- -2 * ( table(Auto$origin)[1] * log( table(Auto$origin)[1] / nrow(Auto), exp(1) )
+            + table(Auto$origin)[2] * log( table(Auto$origin)[2] / nrow(Auto), exp(1) )
+            + table(Auto$origin)[3] * log( table(Auto$origin)[3] / nrow(Auto), exp(1) )
+            )
+D #Deviance inicial de 721,627
+
+# LARGE Classification Tree ####
+Auto_ori <- Auto[,-9:-10] #Por uma questão de interpretação do texto, optei por criar um novo data set onde mudei o nome aos labels da origin e às colunas.
+Auto_ori$origin <- factor(Auto$origin_numeric , levels = c(1,2,3), labels = c("US", "EU", "JP"))
+colnames(Auto_ori)
+colnames(Auto_ori) <- c("mpg", "cy", "di", "hp", "wei", "acc", "y", "origin")
+
+ctree_large.Auto_ori <- tree(Auto_ori$origin ~ ., data = Auto_ori,
+                           control=tree.control(nrow(Auto_ori), mincut = 1,
+                                                minsize = 2, mindev = 0.001), split= "deviance"
+                            )
+summary(ctree_large.Auto_ori)
+
+#O modelo grande da árvore de regressão, obteve 51 nós folha e sem qualquer erro de classificação. Este modelo iria estar sobre ajustado, não sendo ótimo para interpretar dados desconhecidos ao modelo.
+#NOTA: no R Markdown estou a obter uns erros quando tento imprimir gráficos. Pelo que depreendi é um problema de resolução, mas que de momento não estou a conseguir resolver.
+{plot(ctree_large.Auto_ori) 
+text(ctree_large.Auto_ori, pretty = 0, cex = 0.8) 
+}
+
+
+#Para prevenir o sobre ajustamento e para tornar a árvore mais simples, é necessário podar alguns ramos.
+#PRUNE TREE
+seq_ctree.Auto_ori <- prune.tree(ctree_large.Auto_ori)
+{plot(seq_ctree.Auto_ori$size, seq_ctree.Auto_ori$dev, pch = 20)
+lines(seq_ctree.Auto_ori$size, seq_ctree.Auto_ori$dev, col = "red")
+}
+
+
+#Para obter a melhor árvore é necessário ter em consideração:
+# - Um decréscimo mínimo da diversidade da variável dependente. Para isso podemos basear no gráfico em cima que espelha a redução da deviance conforme o número de nós folha.
+# - Outra opção seria trabalhar o primeiro modelo com hiperparâmetros diferentes, onde se poderia alterar o mincut (que é o número mínimo de observações no filho) e o minsize (que se trata do número mínimo de observações no nó pai para a árvore continuar a expandir). Contudo este tipo de análise é mais eficaz em datasets maiores, que não é o nosso caso.
+# - Adicionalmente também é possível definir um número máximo de níveis na árvore.
+
+#Também é possível correr uma validação cruzada (K-fold cross-validation ) com o método misclass para determinar através de uma sequência de subárvores qual ter uma ideia de qual será o corte na árvore que nos dará um menor número de classificações erradas.
+
+?cv.tree
+crossvalidation.tree <- cv.tree(ctree_large.Auto_ori, K=10, method = "misclass")
+crossvalidation.tree
+which.min(crossvalidation.tree[["dev"]])
+crossvalidation.tree[["size"]][5]
+
+#Determino assim que posso iniciar a itereção dos modelos com um corte para obter 24 nós folha
+?prune.tree
+ctree.Auto_ori <- prune.tree(ctree_large.Auto_ori, best = 24)
+summary(ctree.Auto_ori)
+misclass.tree(ctree.Auto_ori)
+#Obtém-se assim então uma rede com 24 nós folha, uma deviance de 135.5 e com 27 casos mal classificados.
+{plot(ctree.Auto_ori) 
+text(ctree.Auto_ori, pretty = 0, cex = 0.8)
+}
+
+
+# Predict com árvore escolhida
+probs.tree.Auto_ori <- predict(ctree.Auto_ori, Auto_ori)
+head(apply(probs.tree.Auto_ori, 1, sum))
+tail(probs.tree.Auto_ori)
+
+# CONFUSION MATRIX
+pred.tree.Auto_ori <- apply(probs.tree.Auto_ori, 1, which.max)
+head(pred.tree.Auto_ori)
+
+pred.tree.Auto_ori <- factor(pred.tree.Auto_ori, levels = c(1,2,3), labels = c("America", "Europe", "Japan"))
+(confusion_mat_ctree <- table(Auto_ori$origin, pred.tree.Auto_ori))
+
+# Avaliação da performance
+#Accuracy
+(accuracy_ctree<-sum(diag(confusion_mat_ctree))/sum(confusion_mat_ctree))
+#Huberty
+diag(confusion_mat_ctree)
+default_p <- max(mean(Auto_s$origin == "America"), mean(Auto_s$origin == "Europe"), mean(Auto_s$origin == "Japan"))
+huberty_ctree <- (accuracy_ctree - default_p) / (1 - default_p)
+huberty_ctree 
+
+#Em conclusão este modelo com 24 nós folha, e uma deviance de 135.5 que é uma boa redução relativamente à deviance inicial de 721,627, só apresenta 27 casos mal classificados.
+#Tem uma ACCURACY de 93,1% e face à possível melhoria de classificação relativa à indicação de classe maioritária obtemos 81,6% de melhoria.
+
+
+
+```
+
+# 4) Trees and Neuralnets for Auto classification
+
+```{r}
+
+# evaluate the selected results comparing neuralnets and trees and eventually using a combination of the two approaches. Use training and test tests and/or cross-validation to evaluate performance
+
+################### PARA OS MODELOS ANTERIORES ###################
+# Os modelos anteriores foram calculados com toda a informação do dataset.
+# Podemos então combinar as probabilidade dos modelos que escolhemos e obter uma probabilidade ponderada tendo em conta os dois modelos.
+# No caso das Redes Neuronais optamos pelo modelo com 3 hidden nodes e relativamente às árvores o modelo com 24 nós folha.
+probs.combined.Auto <- (prob.Auto_s_3 + probs.tree.Auto_ori)/2
+head(apply(probs.combined.Auto, 1, sum))
+tail(probs.combined.Auto)
+
+
+confusion_mat_combined <-table(Auto$origin, apply(probs.combined.Auto, 1, which.max))
+colnames(confusion_mat_combined)<-c("America","Europe","Japan")
+confusion_mat_combined
+
+#Avaliação da performance
+#Accuracy
+(accuracy_combined<-sum(diag(confusion_mat_combined))/sum(confusion_mat_combined))
+#Huberty
+diag(confusion_mat_combined)
+default_p <- max(mean(Auto$origin == "America"), mean(Auto$origin == "Europe"), mean(Auto$origin == "Japan"))
+huberty_combined <- (accuracy_combined - default_p) / (1 - default_p)
+huberty_combined
+
+#Com os dois modelos combinados e com uma ponderação de 50% para cada modelo é possível obter uma ACCURACY de 95,15% e com um Índice de Huberty de 87%.
+#Em conclusão pode-se afirmar que com a mistura dos dois modelos obtemos um modelo melhor.
+
+################### TEST & TRAINING ###################
+#Avaliação de um modelo rede neural e de árvore de classificação através de um subset de treino e respetivo teste num subset específico.
+#Para este fim é necessário criar dois subsets, um de treino e outro de teste, treinar os modelos para o subset de treino e testar.
+#Vou utilizar uma relação 65% treino e 25% teste do dataset original, conforme fizemos nas aulas.
+set.seed(111)
+
+ind_Auto <- sample(nrow(Auto), .65*nrow(Auto))
+length(ind_Auto) #254 entradas
+Auto_train <- Auto[ind_Auto,]
+Auto_test <- Auto[-ind_Auto,]
+Auto_train <- Auto_train[,-9:-10]
+Auto_test <- Auto_test[,-9:-10]
+
+nrow(Auto_train)
+nrow(Auto_test)
+
+
+### NeuralNetworks com crossFolds ####
+#Adicionalmente e por ser um desafio interessante para o treino do modelo com 3 hidden nodes vou utilizar crossFolds para obter uma probabilidade combinada de vários modelos
+
+#Standardização dos subsets ####
+Auto_train_s <- Auto_train
+for (i in 1:7) {
+  Auto_train_s[,i] <- (Auto_train[,i] - mean(Auto_train[,i])) / sd(Auto_train[,i])
+}
+colnames(Auto_train_s)
+Auto_test_s <- Auto_test
+for (i in 1:7) {
+  Auto_test_s[,i] <- (Auto_test[,i] - mean(Auto_test[,i])) / sd(Auto_test[,i])
+}
+colnames(Auto_test_s)
+
+#verificação da standardização
+round(colMeans(Auto_train_s[,c(1:7)]),2)
+apply(Auto_train_s[,c(1:7)],2, sd)
+
+#Create Folds for the NN
+k <- 10 
+folds <- createFolds(Auto_train_s$origin, k, list= TRUE, returnTrain = FALSE)
+str(folds)
+
+#Neural Network with crossFolds
+#Foi necessário ajustar o threshold e o stepmax para que todas as variações dos modelos com crossFolds convergissem
+probs.nn.folds.Auto_train_s <- matrix(c(rep(0,3*nrow(Auto_train_s))), nrow(Auto_train_s), 3) #Matriz para guardar as probabilidades do predict com TREINO
+probs.nn.folds.Auto_test_s <- matrix(c(rep(0,3*nrow(Auto_test_s))), nrow(Auto_test_s), 3) #Matriz para guardar as probabilidades do predict com TESTE
+
+for (j in 1:k) {
+  #NeuralNetwork
+  nn.folds.Auto_train_s <- neuralnet(origin ~ ., data = Auto_train_s[-folds[[j]],],
+                         learningrate = 0.1,
+                         linear.output = FALSE,
+                         hidden = 3,
+                         err.fct = "ce",
+                         lifesign = "minimal",
+                         threshold = 0.15, stepmax = 1e5)
+  #TREINO
+  #Preds
+  pred.nn.folds.Auto_train_s <- predict(nn.folds.Auto_train_s, Auto_train_s)
+  #Probs
+  for (i in 1:nrow(Auto_train_s)) probs.nn.folds.Auto_train_s[i,] <- probs.nn.folds.Auto_train_s[i,] + ( pred.nn.folds.Auto_train_s[i,]/sum(pred.nn.folds.Auto_train_s[i,]) )
+  
+  #TESTE
+  pred.nn.folds.Auto_test_s <- predict(nn.folds.Auto_train_s, Auto_test_s)
+  for (x in 1:nrow(Auto_test_s)) probs.nn.folds.Auto_test_s[x,] <- probs.nn.folds.Auto_test_s[x,] + ( pred.nn.folds.Auto_train_s[x,]/sum(pred.nn.folds.Auto_train_s[x,]) )
+  
+}
+
+#Average Probabilities from all FOLDS
+#Verificação se a SOMA de todas as probabilidades é 10
+head(apply(probs.nn.folds.Auto_train_s, 1, sum)) 
+head(apply(probs.nn.folds.Auto_test_s, 1, sum)) 
+
+for (i in 1:nrow(Auto_train_s)) probs.nn.folds.Auto_train_s[i,] <- probs.nn.folds.Auto_train_s[i,]/10 
+for (x in 1:nrow(Auto_test_s)) probs.nn.folds.Auto_test_s[x,] <- probs.nn.folds.Auto_test_s[x,]/10 
+#Depois de somadas e divididas pelos 10 folds, encontramos uma probabilidade com a ponderação de todos os modelos treinados através dos vários folds no subset de treino
+
+
+#Avaliação da performance da Rede Neuronal no subset de TREINO
+confusion_mat_nn_train<-table(Auto_train_s$origin, apply(probs.nn.folds.Auto_train_s, 1, which.max))
+colnames(confusion_mat_nn_train)<-c("America","Europe","Japan")
+confusion_mat_nn_train
+#Accuracy
+(accuracy_nn_train<-sum(diag(confusion_mat_nn_train))/sum(confusion_mat_nn_train))
+#Huberty
+diag(confusion_mat_nn_train)
+default_p <- max(mean(Auto_train_s$origin == "America"), mean(Auto_train_s$origin == "Europe"), mean(Auto_train_s$origin == "Japan"))
+huberty_nn_train <- (accuracy_nn_train - default_p) / (1 - default_p)
+huberty_nn_train 
+#O modelo obtido através do cruzamento de vários modelos com o crossFolds em TREINO obteve 86.22% de Accuracy e um Índice de Huberty de 61.11%
+
+
+#Avaliação da performance da Rede Neuronal no subset de TESTE
+confusion_mat_nn_test<-table(Auto_test_s$origin, apply(probs.nn.folds.Auto_test_s, 1, which.max))
+colnames(confusion_mat_nn_test)<-c("America","Europe","Japan")
+confusion_mat_nn_test
+#Accuracy
+(accuracy_nn_test<-sum(diag(confusion_mat_nn_test))/sum(confusion_mat_nn_test))
+#Huberty
+diag(confusion_mat_nn_test)
+default_p <- max(mean(Auto_test_s$origin == "America"), mean(Auto_test_s$origin == "Europe"), mean(Auto_test_s$origin == "Japan"))
+huberty_nn_test <- (accuracy_nn_test - default_p) / (1 - default_p)
+huberty_nn_test 
+#O modelo obtido através do cruzamento de vários modelos com o crossFolds em TESTE obteve 44.92% de Accuracy e um Índice de Huberty de -33,3%.
+#Esta modelação está sobre ajustada, pois face a dados novos apresenta uma performance que a classificação através da moda.
+
+
+
+
+
+### Treino da Árvore de Decisão ####
+ctree_large.Auto_train <- tree(Auto_train$origin ~ ., data = Auto_train,
+                           control=tree.control(nrow(Auto_train), mincut = 1,
+                                                minsize = 2, mindev = 0.001), split= "deviance"
+                            )
+summary(ctree_large.Auto_ori)
+
+#PRUNE TREE
+seq_ctree.Auto_train <- prune.tree(ctree_large.Auto_train)
+{plot(seq_ctree.Auto_train$size, seq_ctree.Auto_train$dev, pch = 20)
+lines(seq_ctree.Auto_train$size, seq_ctree.Auto_train$dev, col = "red")
+}
+
+#Através da análise do gráfico da relação da dimensão da árvore com a deviance, optei por selecionar uma árvore com 16 folhas.
+ctree.Auto_train <- prune.tree(ctree_large.Auto_train, best = 16)
+summary(ctree.Auto_train)
+misclass.tree(ctree.Auto_train)
+{plot(ctree.Auto_train)
+text(ctree.Auto_train, pretty = 0, cex = 0.8)
+}
+#Este modelo com 16 folhas, apresenta uma deviance de 97.78 e tem 21 casos mal classificados.
+
+
+
+# Predict com árvore escolhida
+# TREINO
+probs.tree.Auto_train <- predict(ctree.Auto_train, Auto_train)
+head(apply(probs.tree.Auto_train, 1, sum))
+tail(probs.tree.Auto_train)
+nrow(probs.tree.Auto_train)
+# TESTE
+probs.tree.Auto_test <- predict(ctree.Auto_train, Auto_test)
+head(apply(probs.tree.Auto_test, 1, sum))
+tail(probs.tree.Auto_test)
+nrow(probs.tree.Auto_test)
+
+
+# Avaliação da performance da Árvore de Decisão no subset de TREINO
+# Confusion matrix
+confusion_mat_ctree_train <- table(Auto_train$origin, apply(probs.tree.Auto_train, 1, which.max))
+colnames(confusion_mat_ctree_train)<-c("America","Europe","Japan")
+confusion_mat_ctree_train
+#Accuracy
+(accuracy_ctree_train<-sum(diag(confusion_mat_ctree_train))/sum(confusion_mat_ctree_train))
+#Huberty
+diag(confusion_mat_ctree_train)
+default_p <- max(mean(Auto_train$origin == "America"), mean(Auto_train$origin == "Europe"), mean(Auto_train$origin == "Japan"))
+huberty_ctree_train <- (accuracy_ctree_train - default_p) / (1 - default_p)
+huberty_ctree_train
+#O modelo de árvore de decisão em TESTE tem uma Accuracy de 91,73% e um Índice de Huberty de 76,6%
+
+
+# Avaliação da performance da Árvore de Decisão no subset de TESTE
+# Confusion matrix
+confusion_mat_ctree_test <- table(Auto_test$origin, apply(probs.tree.Auto_test, 1, which.max))
+colnames(confusion_mat_ctree_test)<-c("America","Europe","Japan")
+confusion_mat_ctree_test
+#Accuracy
+(accuracy_ctree_test<-sum(diag(confusion_mat_ctree_test))/sum(confusion_mat_ctree_test))
+#Huberty
+diag(confusion_mat_ctree_test)
+default_p <- max(mean(Auto_test$origin == "America"), mean(Auto_test$origin == "Europe"), mean(Auto_test$origin == "Japan"))
+huberty_ctree_test <- (accuracy_ctree_test - default_p) / (1 - default_p)
+huberty_ctree_test
+#O modelo de árvore de decisão em TREINO tem uma Accuracy de 79,7% e um Índice de Huberty de 50,8%
+
+
+# Tabela resumo da performance
+
+colunas = c("Accuracy", "Huberty")
+indicadores.nn.train = c(accuracy_nn_train, huberty_nn_train)
+indicadores.nn.test = c(accuracy_nn_test, huberty_nn_test)
+indicadores.ctree.train = c(accuracy_ctree_train, huberty_ctree_train)
+indicadores.ctree.test = c(accuracy_ctree_test, huberty_ctree_test)
+
+
+performance.summary <- data.frame(medida = colunas, nn.train = indicadores.nn.train, nn.test = indicadores.nn.test, ctree.train = indicadores.ctree.train, ctree.test = indicadores.ctree.test)
+performance.summary
+
+#Através desta tabela resumo com as medidas de performance, e relativamente à rede neuronal, consigo concluir que o formato que utilizei para treinar o modelo através de folds não foi uma boa opção visto obter uma avaliação muito inferior. 
+#Quanto ao modelo por árvore de decisão, verifica-se que o modelo ainda consegue garantir uma previsão boa e uma performance melhor que uma classificação relativa à indicação de classe maioritária.
+
+```
